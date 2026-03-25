@@ -1,8 +1,6 @@
-import Groq from "groq-sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const client = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export interface SensoryScores {
   gripFeel: number;
@@ -51,12 +49,17 @@ export async function analyzeTranscripts(
 ): Promise<AnalysisResult> {
   const isJapanese = locale === "ja";
   const videoAnalyses: VideoAnalysis[] = [];
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 1024,
+      responseMimeType: "application/json",
+    },
+  });
 
   for (let i = 0; i < videos.length; i++) {
     const video = videos[i];
-
-    // 2 second delay between calls to stay within Groq's 6K tokens/min limit
-    if (i > 0) await new Promise((r) => setTimeout(r, 2000));
 
     onProgress?.("analyzing_video", {
       index: i,
@@ -73,48 +76,49 @@ export async function analyzeTranscripts(
           ? "YouTubeレビュー動画"
           : "YouTube review video";
 
-    // Truncate content to ~2000 chars to save token budget
-    const content =
-      video.transcript.length > 2000
-        ? video.transcript.slice(0, 2000)
-        : video.transcript;
-
     const prompt = isJapanese
       ? `あなたは釣具の専門レビューアナリストです。以下の${sourceLabel}のコンテンツを分析し、「${query}」に関する官能評価を抽出してください。
 
-重要: すべての出力（quotes、summary）は必ず日本語で記述してください。
+重要: すべての出力（quotes、summary）は必ず日本語で記述してください。元のコンテンツが他の言語の場合は、日本語に翻訳してください。
 
 コンテンツ:
-${content}
+${video.transcript}
 
-1〜10のスコアで評価してください（情報がない場合は5）:
-1. グリップ感 2. 振り心地 3. 重量バランス 4. キャスティング性能 5. 耐久性の印象 6. 総合満足度
+以下の各項目について1〜10のスコアで評価してください（コンテンツに該当する情報がない場合は5としてください）:
+1. グリップ感 (質感、快適さ、素材の品質)
+2. 振り心地 (バランス、レスポンス、しなり)
+3. 重量バランス (軽さ、重量配分)
+4. キャスティング性能 (飛距離、精度、スムーズさ)
+5. 耐久性の印象 (作りの良さ、堅牢性)
+6. 総合満足度
 
-具体的な引用を3つまで、要約を2文で記述してください。
+コンテンツから具体的な記述を日本語で3つまで引用し、全体の要約を日本語で2〜3文で記述してください。
 
-JSON形式で回答:
-{"scores":{"gripFeel":0,"swingSensation":0,"weightBalance":0,"castingPerformance":0,"durabilityImpression":0,"overallSatisfaction":0},"quotes":[],"summary":""}`
+以下のJSON形式で回答してください:
+{"scores":{"gripFeel":0,"swingSensation":0,"weightBalance":0,"castingPerformance":0,"durabilityImpression":0,"overallSatisfaction":0},"quotes":["引用1","引用2","引用3"],"summary":"要約文"}`
       : `You are an expert fishing tackle review analyst. Analyze the following ${sourceLabel} content and extract organoleptic evaluations for "${query}".
 
+IMPORTANT: All output (quotes, summary) must be in English. If the source content is in another language, translate to English.
+
 Content:
-${content}
+${video.transcript}
 
-Score 1-10 (use 5 if no info): Grip Feel, Swing Sensation, Weight & Balance, Casting Performance, Durability Impression, Overall Satisfaction.
-Extract up to 3 quotes and a 2 sentence summary in English.
+Score each dimension from 1-10 (use 5 if no relevant information is found):
+1. Grip Feel (texture, comfort, material quality)
+2. Swing Sensation (balance, responsiveness, flex)
+3. Weight & Balance (lightness, distribution)
+4. Casting Performance (distance, accuracy, smoothness)
+5. Durability Impression (build quality, robustness)
+6. Overall Satisfaction
 
-JSON format:
-{"scores":{"gripFeel":0,"swingSensation":0,"weightBalance":0,"castingPerformance":0,"durabilityImpression":0,"overallSatisfaction":0},"quotes":[],"summary":""}`;
+Also extract up to 3 specific reviewer quotes (translated to English if needed) and write a 2-3 sentence summary in English.
+
+Respond in JSON format:
+{"scores":{"gripFeel":0,"swingSensation":0,"weightBalance":0,"castingPerformance":0,"durabilityImpression":0,"overallSatisfaction":0},"quotes":["quote1","quote2","quote3"],"summary":"summary text"}`;
 
     try {
-      const response = await client.chat.completions.create({
-        model: "llama-3.1-8b-instant",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 512,
-        temperature: 0.3,
-        response_format: { type: "json_object" },
-      });
-
-      const text = response.choices[0]?.message?.content || "";
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         onProgress?.("video_error", {
