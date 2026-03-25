@@ -28,7 +28,7 @@ export const translations = {
     videoCount: "件のソースを分析",
     sourceLink: "YouTubeで見る",
     naturumLink: "ナチュラムで見る",
-    poweredBy: "Groq AI による分析",
+    poweredBy: "Gemini AI による分析",
     language: "EN",
     features: {
       searchTitle: "マルチソース検索",
@@ -90,7 +90,7 @@ export const translations = {
     videoCount: "sources analyzed",
     sourceLink: "Watch on YouTube",
     naturumLink: "View on Naturum",
-    poweredBy: "Powered by Groq AI",
+    poweredBy: "Powered by Gemini AI",
     language: "JA",
     features: {
       searchTitle: "Multi-Source Search",

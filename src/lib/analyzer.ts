@@ -1,8 +1,6 @@
-import Groq from "groq-sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const client = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export interface SensoryScores {
   gripFeel: number;
@@ -51,12 +49,17 @@ export async function analyzeTranscripts(
 ): Promise<AnalysisResult> {
   const isJapanese = locale === "ja";
   const videoAnalyses: VideoAnalysis[] = [];
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 1024,
+      responseMimeType: "application/json",
+    },
+  });
 
   for (let i = 0; i < videos.length; i++) {
     const video = videos[i];
-
-    // Small delay between API calls to avoid Groq rate limits
-    if (i > 0) await new Promise((r) => setTimeout(r, 500));
 
     onProgress?.("analyzing_video", {
       index: i,
@@ -89,9 +92,9 @@ ${video.transcript}
 5. 耐久性の印象 (作りの良さ、堅牢性)
 6. 総合満足度
 
-また、レビュアーの具体的なコメントを日本語で3つまで引用（または翻訳して引用）し、全体の要約を日本語で2〜3文で記述してください。
+また、コンテンツから具体的な記述を日本語で3つまで引用（または翻訳して引用）し、全体の要約を日本語で2〜3文で記述してください。
 
-以下のJSON形式で回答してください（JSONのみ、他のテキストは不要）:
+以下のJSON形式で回答してください:
 {
   "scores": {
     "gripFeel": <number>,
@@ -121,7 +124,7 @@ Score each dimension from 1-10 (use 5 if no relevant information is found):
 
 Also extract up to 3 specific reviewer quotes (translated to English if needed) and write a 2-3 sentence summary in English.
 
-Respond in the following JSON format only (no other text):
+Respond in the following JSON format:
 {
   "scores": {
     "gripFeel": <number>,
@@ -135,68 +138,47 @@ Respond in the following JSON format only (no other text):
   "summary": "English summary text"
 }`;
 
-    // Retry up to 2 times for rate limit errors
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        if (attempt > 0) {
-          console.log(`Retry attempt ${attempt} for: ${video.title}`);
-          await new Promise((r) => setTimeout(r, 3000 * attempt));
-        }
-
-        const response = await client.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 1024,
-          temperature: 0.3,
-          response_format: { type: "json_object" },
-        });
-
-        const text = response.choices[0]?.message?.content || "";
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          onProgress?.("video_error", {
-            index: i,
-            title: video.title,
-            error: "Invalid AI response",
-          });
-          break;
-        }
-
-        const parsed = JSON.parse(jsonMatch[0]);
-        const analysis: VideoAnalysis = {
-          videoId: video.videoId,
-          title: video.title,
-          channelTitle: video.channelTitle,
-          url: video.url,
-          source: video.source,
-          scores: parsed.scores,
-          quotes: parsed.quotes || [],
-          summary: parsed.summary || "",
-        };
-
-        videoAnalyses.push(analysis);
-
-        onProgress?.("video_done", {
-          index: i,
-          title: video.title,
-          analysis,
-        });
-        break; // success, exit retry loop
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        console.error(`Analysis error for "${video.title}" (attempt ${attempt + 1}):`, msg);
-
-        // If rate limited and not last attempt, retry
-        const isRateLimit = msg.includes("rate") || msg.includes("429") || msg.includes("limit");
-        if (isRateLimit && attempt < 2) continue;
-
+    try {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
         onProgress?.("video_error", {
           index: i,
           title: video.title,
-          error: msg,
+          error: "Invalid AI response",
         });
-        break;
+        continue;
       }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      const analysis: VideoAnalysis = {
+        videoId: video.videoId,
+        title: video.title,
+        channelTitle: video.channelTitle,
+        url: video.url,
+        source: video.source,
+        scores: parsed.scores,
+        quotes: parsed.quotes || [],
+        summary: parsed.summary || "",
+      };
+
+      videoAnalyses.push(analysis);
+
+      onProgress?.("video_done", {
+        index: i,
+        title: video.title,
+        analysis,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      console.error(`Analysis error for "${video.title}":`, msg);
+      onProgress?.("video_error", {
+        index: i,
+        title: video.title,
+        error: msg,
+      });
+      continue;
     }
   }
 
