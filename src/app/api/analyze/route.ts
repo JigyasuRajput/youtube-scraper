@@ -23,17 +23,22 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        // Fetch from YouTube and Naturum in parallel
-        const [youtubeVideos, naturumProducts] = await Promise.all([
-          searchAndExtract(query, 3, locale, (event, data) => {
-            send(event, data);
-          }),
-          searchNaturum(query, 3, locale, (event, data) => {
-            send(event, data);
-          }),
-        ]);
+        // Step 1: Fetch YouTube first
+        const youtubeVideos = await searchAndExtract(query, 3, locale, (event, data) => {
+          send(event, data);
+        });
 
-        // Interleave sources so both get analyzed (avoids rate limit hitting only one source)
+        // Step 2: Then fetch Naturum (sequential to avoid network contention)
+        const naturumProducts = await searchNaturum(query, 3, locale, (event, data) => {
+          send(event, data);
+        });
+
+        send("debug_counts", {
+          youtube: youtubeVideos.length,
+          naturum: naturumProducts.length,
+        });
+
+        // Build content arrays
         const youtubeContent: ContentInput[] = youtubeVideos.map((v) => ({
           videoId: v.videoId,
           title: v.title,
