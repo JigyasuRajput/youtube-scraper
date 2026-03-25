@@ -179,7 +179,7 @@ export async function searchAndExtract(
       channelTitle: item.snippet?.channelTitle || "Unknown",
       url: `https://www.youtube.com/watch?v=${videoId}`,
       transcript:
-        content.length > 8000 ? content.slice(0, 8000) : content,
+        content.length > 4000 ? content.slice(0, 4000) : content,
     });
   }
 

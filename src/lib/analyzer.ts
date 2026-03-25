@@ -135,52 +135,68 @@ Respond in the following JSON format only (no other text):
   "summary": "English summary text"
 }`;
 
-    try {
-      const response = await client.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 1024,
-        temperature: 0.3,
-        response_format: { type: "json_object" },
-      });
+    // Retry up to 2 times for rate limit errors
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) {
+          console.log(`Retry attempt ${attempt} for: ${video.title}`);
+          await new Promise((r) => setTimeout(r, 3000 * attempt));
+        }
 
-      const text = response.choices[0]?.message?.content || "";
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
+        const response = await client.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 1024,
+          temperature: 0.3,
+          response_format: { type: "json_object" },
+        });
+
+        const text = response.choices[0]?.message?.content || "";
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          onProgress?.("video_error", {
+            index: i,
+            title: video.title,
+            error: "Invalid AI response",
+          });
+          break;
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const analysis: VideoAnalysis = {
+          videoId: video.videoId,
+          title: video.title,
+          channelTitle: video.channelTitle,
+          url: video.url,
+          source: video.source,
+          scores: parsed.scores,
+          quotes: parsed.quotes || [],
+          summary: parsed.summary || "",
+        };
+
+        videoAnalyses.push(analysis);
+
+        onProgress?.("video_done", {
+          index: i,
+          title: video.title,
+          analysis,
+        });
+        break; // success, exit retry loop
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        console.error(`Analysis error for "${video.title}" (attempt ${attempt + 1}):`, msg);
+
+        // If rate limited and not last attempt, retry
+        const isRateLimit = msg.includes("rate") || msg.includes("429") || msg.includes("limit");
+        if (isRateLimit && attempt < 2) continue;
+
         onProgress?.("video_error", {
           index: i,
           title: video.title,
-          error: "Invalid AI response",
+          error: msg,
         });
-        continue;
+        break;
       }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-      const analysis: VideoAnalysis = {
-        videoId: video.videoId,
-        title: video.title,
-        channelTitle: video.channelTitle,
-        url: video.url,
-        source: video.source,
-        scores: parsed.scores,
-        quotes: parsed.quotes || [],
-        summary: parsed.summary || "",
-      };
-
-      videoAnalyses.push(analysis);
-
-      onProgress?.("video_done", {
-        index: i,
-        title: video.title,
-        analysis,
-      });
-    } catch (err) {
-      onProgress?.("video_error", {
-        index: i,
-        title: video.title,
-        error: err instanceof Error ? err.message : "Unknown error",
-      });
-      continue;
     }
   }
 
