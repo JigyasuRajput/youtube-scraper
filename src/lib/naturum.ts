@@ -22,16 +22,27 @@ async function fetchPage(url: string): Promise<string> {
     const response = await fetch(url, {
       headers: {
         "User-Agent": USER_AGENT,
-        "Accept-Language": "ja,en;q=0.9",
-        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "ja,en-US;q=0.7,en;q=0.3",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        Connection: "keep-alive",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Upgrade-Insecure-Requests": "1",
       },
       signal: controller.signal,
     });
 
     clearTimeout(timeout);
-    if (!response.ok) return "";
+    if (!response.ok) {
+      console.error(`Naturum fetch failed: ${response.status} for ${url}`);
+      return "";
+    }
     return response.text();
-  } catch {
+  } catch (err) {
+    console.error(`Naturum fetch error for ${url}:`, err);
     return "";
   }
 }
