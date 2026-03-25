@@ -114,10 +114,9 @@ export async function searchNaturum(
   onProgress?: ProgressCallback
 ): Promise<NaturumProduct[]> {
   try {
-  // Naturum is a Japanese site, so always search in Japanese
-  // For English locale, the query is likely already a product name (e.g. "Daiwa Emeraldas")
-  // which works on naturum since brand/product names are often in English
-  const searchQuery = locale === "ja" ? query : query;
+  // Naturum is a Japanese site — strip English generic terms that return no results
+  const genericTerms = /\b(fishing\s*rod|rod|reel|lure|tackle|line|hook|bait|spinning|casting|review|impression)\b/gi;
+  const searchQuery = query.replace(genericTerms, "").replace(/\s+/g, " ").trim();
   onProgress?.("naturum_searching", { query: searchQuery });
 
   const encoded = encodeURIComponent(searchQuery);
