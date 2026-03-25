@@ -55,6 +55,9 @@ export async function analyzeTranscripts(
   for (let i = 0; i < videos.length; i++) {
     const video = videos[i];
 
+    // Small delay between API calls to avoid Groq rate limits
+    if (i > 0) await new Promise((r) => setTimeout(r, 500));
+
     onProgress?.("analyzing_video", {
       index: i,
       total: videos.length,
