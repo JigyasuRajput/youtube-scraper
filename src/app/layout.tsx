@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "釣具レビュー分析 | Fishing Tackle Review Analyzer",
   description:
-    "YouTubeレビューからAIが釣具の官能評価を抽出・スコアリング",
+    "YouTube・ナチュラムからAIが釣具の官能評価を抽出・スコアリング",
 };
 
 export default function RootLayout({

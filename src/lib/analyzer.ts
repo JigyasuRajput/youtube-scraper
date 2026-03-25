@@ -13,11 +13,14 @@ export interface SensoryScores {
   overallSatisfaction: number;
 }
 
+export type SourceType = "youtube" | "naturum";
+
 export interface VideoAnalysis {
   videoId: string;
   title: string;
   channelTitle: string;
   url: string;
+  source: SourceType;
   scores: SensoryScores;
   quotes: string[];
   summary: string;
@@ -29,18 +32,19 @@ export interface AnalysisResult {
   aggregateScores: SensoryScores;
 }
 
-interface VideoInput {
+export interface ContentInput {
   videoId: string;
   title: string;
   channelTitle: string;
   url: string;
   transcript: string;
+  source: SourceType;
 }
 
 export type ProgressCallback = (event: string, data: unknown) => void;
 
 export async function analyzeTranscripts(
-  videos: VideoInput[],
+  videos: ContentInput[],
   query: string,
   locale: string,
   onProgress?: ProgressCallback
@@ -57,8 +61,17 @@ export async function analyzeTranscripts(
       title: video.title,
     });
 
+    const sourceLabel =
+      video.source === "naturum"
+        ? isJapanese
+          ? "ナチュラムの商品情報"
+          : "Naturum product listing"
+        : isJapanese
+          ? "YouTubeレビュー動画"
+          : "YouTube review video";
+
     const prompt = isJapanese
-      ? `あなたは釣具の専門レビューアナリストです。以下のYouTubeレビュー動画のコンテンツを分析し、「${query}」に関する官能評価を抽出してください。
+      ? `あなたは釣具の専門レビューアナリストです。以下の${sourceLabel}のコンテンツを分析し、「${query}」に関する官能評価を抽出してください。
 
 重要: すべての出力（quotes、summary）は必ず日本語で記述してください。元のコンテンツが他の言語の場合は、日本語に翻訳してください。
 
@@ -88,7 +101,7 @@ ${video.transcript}
   "quotes": ["日本語の引用1", "日本語の引用2", "日本語の引用3"],
   "summary": "日本語の要約文"
 }`
-      : `You are an expert fishing tackle review analyst. Analyze the following YouTube review video content and extract organoleptic evaluations for "${query}".
+      : `You are an expert fishing tackle review analyst. Analyze the following ${sourceLabel} content and extract organoleptic evaluations for "${query}".
 
 IMPORTANT: All output (quotes, summary) must be in English. If the source content is in another language, translate to English.
 
@@ -145,6 +158,7 @@ Respond in the following JSON format only (no other text):
         title: video.title,
         channelTitle: video.channelTitle,
         url: video.url,
+        source: video.source,
         scores: parsed.scores,
         quotes: parsed.quotes || [],
         summary: parsed.summary || "",

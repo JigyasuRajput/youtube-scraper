@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { searchAndExtract } from "@/lib/youtube";
-import { analyzeTranscripts } from "@/lib/analyzer";
+import { searchNaturum } from "@/lib/naturum";
+import { analyzeTranscripts, ContentInput } from "@/lib/analyzer";
 
 export async function POST(request: NextRequest) {
   const { query, locale = "ja" } = await request.json();
@@ -22,18 +23,50 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const videos = await searchAndExtract(query, 5, locale, (event, data) => {
-          send(event, data);
-        });
+        // Fetch from YouTube and Naturum in parallel
+        const [youtubeVideos, naturumProducts] = await Promise.all([
+          searchAndExtract(query, 5, locale, (event, data) => {
+            send(event, data);
+          }),
+          searchNaturum(query, 3, (event, data) => {
+            send(event, data);
+          }),
+        ]);
 
-        if (videos.length === 0) {
+        // Normalize all content into a unified format
+        const allContent: ContentInput[] = [
+          ...youtubeVideos.map((v) => ({
+            videoId: v.videoId,
+            title: v.title,
+            channelTitle: v.channelTitle,
+            url: v.url,
+            transcript: v.transcript,
+            source: "youtube" as const,
+          })),
+          ...naturumProducts.map((item) => ({
+            videoId: item.itemCode,
+            title: item.name,
+            channelTitle: item.brand,
+            url: item.url,
+            transcript: `[Product Description]\n${item.description}\n\n[Specs]\n${item.specs}\n\n[Rating] ${item.rating}/5 (${item.reviewCount} reviews)`,
+            source: "naturum" as const,
+          })),
+        ];
+
+        if (allContent.length === 0) {
           send("error", { code: "no_videos" });
           controller.close();
           return;
         }
 
+        send("sources_ready", {
+          youtube: youtubeVideos.length,
+          naturum: naturumProducts.length,
+          total: allContent.length,
+        });
+
         const result = await analyzeTranscripts(
-          videos,
+          allContent,
           query,
           locale,
           (event, data) => {

@@ -63,9 +63,14 @@ export default function Home() {
             const { event, data } = JSON.parse(match[1]);
 
             if (event === "search_done") {
-              setVideosFound(data.count as number);
+              setVideosFound((prev) => prev + (data.count as number));
               setLoadingPhase("extracting");
-            } else if (event === "extraction_complete") {
+            } else if (event === "naturum_search_done") {
+              setVideosFound((prev) => prev + (data.count as number));
+            } else if (event === "extraction_complete" || event === "sources_ready") {
+              if (event === "sources_ready") {
+                setVideosFound(data.total as number);
+              }
               setLoadingPhase("analyzing");
             } else if (event === "analyzing_video") {
               setAnalyzeProgress({
