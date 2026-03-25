@@ -110,12 +110,17 @@ function extractJsonLd(html: string): {
 export async function searchNaturum(
   query: string,
   maxResults: number = 3,
+  locale: string = "ja",
   onProgress?: ProgressCallback
 ): Promise<NaturumProduct[]> {
   try {
-  onProgress?.("naturum_searching", { query });
+  // Naturum is a Japanese site, so always search in Japanese
+  // For English locale, the query is likely already a product name (e.g. "Daiwa Emeraldas")
+  // which works on naturum since brand/product names are often in English
+  const searchQuery = locale === "ja" ? query : query;
+  onProgress?.("naturum_searching", { query: searchQuery });
 
-  const encoded = encodeURIComponent(query);
+  const encoded = encodeURIComponent(searchQuery);
   const searchUrl = `https://www.naturum.co.jp/search/?keyword=${encoded}&sort=review`;
   const searchHtml = await fetchPage(searchUrl);
 

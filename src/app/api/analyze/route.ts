@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
           searchAndExtract(query, 5, locale, (event, data) => {
             send(event, data);
           }),
-          searchNaturum(query, 3, (event, data) => {
+          searchNaturum(query, 3, locale, (event, data) => {
             send(event, data);
           }),
         ]);
