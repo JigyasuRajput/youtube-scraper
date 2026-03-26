@@ -94,6 +94,8 @@ ${video.transcript}
 
 コンテンツから具体的な記述を日本語で3つまで引用し、全体の要約を日本語で2〜3文で記述してください。
 
+重要: 謝罪や「分析できません」などの表現は絶対に使わないでください。詳細なレビューがない場合は、利用可能な商品情報を要約してください。カスタマーレビューがない場合は「カスタマーレビューはまだありません。スコアは商品仕様に基づいています。」と記載してください。
+
 以下のJSON形式で回答してください:
 {"scores":{"gripFeel":0,"swingSensation":0,"weightBalance":0,"castingPerformance":0,"durabilityImpression":0,"overallSatisfaction":0},"quotes":["引用1","引用2","引用3"],"summary":"要約文"}`
       : `You are an expert fishing tackle review analyst. Analyze the following ${sourceLabel} content and extract organoleptic evaluations for "${query}".
@@ -111,7 +113,9 @@ Score each dimension from 1-10 (use 5 if no relevant information is found):
 5. Durability Impression (build quality, robustness)
 6. Overall Satisfaction
 
-Also extract up to 3 specific reviewer quotes (translated to English if needed) and write a 2-3 sentence summary in English.
+Also extract up to 3 specific quotes from the content (translated to English if needed) and write a 2-3 sentence summary in English.
+
+IMPORTANT: Never apologize or say you cannot analyze. If the content lacks detailed reviews, summarize what product information IS available. If there are no customer reviews, state "No customer reviews available. Scores are based on product specifications." Keep it professional and factual.
 
 Respond in JSON format:
 {"scores":{"gripFeel":0,"swingSensation":0,"weightBalance":0,"castingPerformance":0,"durabilityImpression":0,"overallSatisfaction":0},"quotes":["quote1","quote2","quote3"],"summary":"summary text"}`;
