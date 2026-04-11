@@ -134,6 +134,11 @@ JSON: {"scores":{...},"quotes":[...],"summary":"..."}`;
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
+      // Normalize quotes — AI sometimes returns objects like {text, author} instead of strings
+      const rawQuotes: unknown[] = parsed.quotes || [];
+      const quotes: string[] = rawQuotes.map((q) =>
+        typeof q === "string" ? q : typeof q === "object" && q !== null && "text" in q ? String((q as { text: string }).text) : String(q)
+      );
       const analysis: VideoAnalysis = {
         videoId: video.videoId,
         title: video.title,
@@ -141,8 +146,8 @@ JSON: {"scores":{...},"quotes":[...],"summary":"..."}`;
         url: video.url,
         source: video.source,
         scores: parsed.scores,
-        quotes: parsed.quotes || [],
-        summary: parsed.summary || "",
+        quotes,
+        summary: typeof parsed.summary === "string" ? parsed.summary : String(parsed.summary || ""),
       };
 
       videoAnalyses.push(analysis);
