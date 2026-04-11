@@ -1,6 +1,8 @@
+import Groq from "groq-sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export interface SensoryScores {
   gripFeel: number;
@@ -41,6 +43,38 @@ export interface ContentInput {
 
 export type ProgressCallback = (event: string, data: unknown) => void;
 
+// Try Groq first, fall back to Gemini on rate limit
+async function callAI(prompt: string): Promise<string> {
+  // Try Groq first (free, fast)
+  try {
+    const response = await groqClient.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 512,
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+    });
+    return response.choices[0]?.message?.content || "";
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    const isRateLimit = msg.includes("rate") || msg.includes("429") || msg.includes("limit");
+    if (!isRateLimit) throw err;
+  }
+
+  // Fallback: Gemini (paid, but reliable)
+  console.log("Groq rate limited, falling back to Gemini");
+  const model = geminiClient.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 400,
+      responseMimeType: "application/json",
+    },
+  });
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+}
+
 export async function analyzeTranscripts(
   videos: ContentInput[],
   query: string,
@@ -49,17 +83,11 @@ export async function analyzeTranscripts(
 ): Promise<AnalysisResult> {
   const isJapanese = locale === "ja";
   const videoAnalyses: VideoAnalysis[] = [];
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash",
-    generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: 1024,
-      responseMimeType: "application/json",
-    },
-  });
 
   for (let i = 0; i < videos.length; i++) {
     const video = videos[i];
+
+    if (i > 0) await new Promise((r) => setTimeout(r, 1000));
 
     onProgress?.("analyzing_video", {
       index: i,
@@ -69,60 +97,32 @@ export async function analyzeTranscripts(
 
     const sourceLabel =
       video.source === "naturum"
-        ? isJapanese
-          ? "ナチュラムの商品情報"
-          : "Naturum product listing"
-        : isJapanese
-          ? "YouTubeレビュー動画"
-          : "YouTube review video";
+        ? isJapanese ? "ナチュラムの商品情報" : "Naturum product listing"
+        : isJapanese ? "YouTubeレビュー動画" : "YouTube review video";
+
+    // Truncate to save tokens
+    const content = video.transcript.length > 2000
+      ? video.transcript.slice(0, 2000)
+      : video.transcript;
 
     const prompt = isJapanese
-      ? `あなたは釣具の専門レビューアナリストです。以下の${sourceLabel}のコンテンツを分析し、「${query}」に関する官能評価を抽出してください。
+      ? `釣具レビュー分析。${sourceLabel}から「${query}」の官能評価を抽出。
 
-重要: すべての出力（quotes、summary）は必ず日本語で記述してください。元のコンテンツが他の言語の場合は、日本語に翻訳してください。
+${content}
 
-コンテンツ:
-${video.transcript}
+1-10でスコア（情報なし=5）: gripFeel,swingSensation,weightBalance,castingPerformance,durabilityImpression,overallSatisfaction
+引用3つ、要約2文。レビューなしなら「カスタマーレビューはまだありません。スコアは商品仕様に基づいています。」
+JSON: {"scores":{...},"quotes":[...],"summary":"..."}`
+      : `Fishing tackle review analysis. Extract organoleptic scores for "${query}" from this ${sourceLabel}.
 
-以下の各項目について1〜10のスコアで評価してください（コンテンツに該当する情報がない場合は5としてください）:
-1. グリップ感 (質感、快適さ、素材の品質)
-2. 振り心地 (バランス、レスポンス、しなり)
-3. 重量バランス (軽さ、重量配分)
-4. キャスティング性能 (飛距離、精度、スムーズさ)
-5. 耐久性の印象 (作りの良さ、堅牢性)
-6. 総合満足度
+${content}
 
-コンテンツから具体的な記述を日本語で3つまで引用し、全体の要約を日本語で2〜3文で記述してください。
-
-重要: 謝罪や「分析できません」などの表現は絶対に使わないでください。詳細なレビューがない場合は、利用可能な商品情報を要約してください。カスタマーレビューがない場合は「カスタマーレビューはまだありません。スコアは商品仕様に基づいています。」と記載してください。
-
-以下のJSON形式で回答してください:
-{"scores":{"gripFeel":0,"swingSensation":0,"weightBalance":0,"castingPerformance":0,"durabilityImpression":0,"overallSatisfaction":0},"quotes":["引用1","引用2","引用3"],"summary":"要約文"}`
-      : `You are an expert fishing tackle review analyst. Analyze the following ${sourceLabel} content and extract organoleptic evaluations for "${query}".
-
-IMPORTANT: All output (quotes, summary) must be in English. If the source content is in another language, translate to English.
-
-Content:
-${video.transcript}
-
-Score each dimension from 1-10 (use 5 if no relevant information is found):
-1. Grip Feel (texture, comfort, material quality)
-2. Swing Sensation (balance, responsiveness, flex)
-3. Weight & Balance (lightness, distribution)
-4. Casting Performance (distance, accuracy, smoothness)
-5. Durability Impression (build quality, robustness)
-6. Overall Satisfaction
-
-Also extract up to 3 specific quotes from the content (translated to English if needed) and write a 2-3 sentence summary in English.
-
-IMPORTANT: Never apologize or say you cannot analyze. If the content lacks detailed reviews, summarize what product information IS available. If there are no customer reviews, state "No customer reviews available. Scores are based on product specifications." Keep it professional and factual.
-
-Respond in JSON format:
-{"scores":{"gripFeel":0,"swingSensation":0,"weightBalance":0,"castingPerformance":0,"durabilityImpression":0,"overallSatisfaction":0},"quotes":["quote1","quote2","quote3"],"summary":"summary text"}`;
+Score 1-10 (5 if no info): gripFeel,swingSensation,weightBalance,castingPerformance,durabilityImpression,overallSatisfaction
+3 quotes, 2-sentence summary. If no reviews: "No customer reviews available. Scores based on product specs."
+JSON: {"scores":{...},"quotes":[...],"summary":"..."}`;
 
     try {
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
+      const text = await callAI(prompt);
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         onProgress?.("video_error", {
