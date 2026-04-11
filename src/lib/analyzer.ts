@@ -134,6 +134,16 @@ JSON: {"scores":{...},"quotes":[...],"summary":"..."}`;
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
+      // Normalize scores — ensure all keys are numbers, default to 5
+      const rawScores = parsed.scores || {};
+      const scores: SensoryScores = {
+        gripFeel: Number(rawScores.gripFeel) || 5,
+        swingSensation: Number(rawScores.swingSensation) || 5,
+        weightBalance: Number(rawScores.weightBalance) || 5,
+        castingPerformance: Number(rawScores.castingPerformance) || 5,
+        durabilityImpression: Number(rawScores.durabilityImpression) || 5,
+        overallSatisfaction: Number(rawScores.overallSatisfaction) || 5,
+      };
       // Normalize quotes — AI sometimes returns objects like {text, author} instead of strings
       const rawQuotes: unknown[] = parsed.quotes || [];
       const quotes: string[] = rawQuotes.map((q) =>
@@ -145,7 +155,7 @@ JSON: {"scores":{...},"quotes":[...],"summary":"..."}`;
         channelTitle: video.channelTitle,
         url: video.url,
         source: video.source,
-        scores: parsed.scores,
+        scores,
         quotes,
         summary: typeof parsed.summary === "string" ? parsed.summary : String(parsed.summary || ""),
       };

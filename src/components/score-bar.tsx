@@ -13,9 +13,9 @@ export function ScoreBar({ label, score }: ScoreBarProps) {
       <span className="w-40 shrink-0 text-sm text-muted-foreground">
         {label}
       </span>
-      <Progress value={score * 10} className="flex-1" />
+      <Progress value={(score ?? 0) * 10} className="flex-1" />
       <span className="w-10 shrink-0 text-right font-mono text-sm font-semibold">
-        {score.toFixed(1)}
+        {(score ?? 0).toFixed(1)}
       </span>
     </div>
   );
